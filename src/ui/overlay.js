@@ -282,7 +282,28 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
             // Ẩn placeholder, hiện search + danh sách môn
             shadowRoot.getElementById("course-placeholder").style.display = "none";
             shadowRoot.getElementById("search-wrapper").style.display = "flex";
-            shadowRoot.getElementById("course-total-label").textContent = `${uniqueCodes.length} môn học (${allCourses.length} lớp)`;
+
+            const labelEl = shadowRoot.getElementById("course-total-label");
+            labelEl.textContent = `${uniqueCodes.length} môn học (${allCourses.length} lớp)`;
+
+            // Xóa nút xem chi tiết lớp hết chỗ cũ nếu có
+            const oldBtn = shadowRoot.getElementById("btn-show-full-classes");
+            if (oldBtn) oldBtn.remove();
+
+            const fullMain = allCourses.fullMainClassesCount || 0;
+            const fullSub = allCourses.fullSubClassesCount || 0;
+            if (fullMain > 0 || fullSub > 0) {
+                const headerEl = shadowRoot.getElementById("course-list-header");
+                const btn = document.createElement("button");
+                btn.id = "btn-show-full-classes";
+                btn.className = "btn-view-full-classes";
+                btn.innerHTML = `⚠️ Đã ẩn ${fullMain + fullSub} lớp hết chỗ <span>[Xem chi tiết]</span>`;
+                btn.onclick = () => {
+                    showFullClassesModal(allCourses.fullClasses || []);
+                };
+                headerEl.appendChild(btn);
+            }
+
             shadowRoot.getElementById("course-selection-wrapper").style.display = "flex";
 
             // Hiện cột phải (tiêu chí + ghim)
@@ -291,7 +312,12 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
 
             renderCourseList(uniqueCodes);
             renderPinClasses();
-            showAlert(`Quét thành công ${allCourses.length} lớp (${uniqueCodes.length} môn)!`, "success");
+
+            let alertText = `Quét thành công ${allCourses.length} lớp (${uniqueCodes.length} môn)!`;
+            if (fullMain > 0 || fullSub > 0) {
+                alertText += ` (Đã bỏ qua ${fullMain + fullSub} lớp hết chỗ)`;
+            }
+            showAlert(alertText, "success");
 
         } catch (e) {
             console.error("Lỗi khi quét dữ liệu:", e);
@@ -642,5 +668,67 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
 
             detailsList.appendChild(detailCard);
         });
+    }
+
+    function showFullClassesModal(fullClasses) {
+        if (shadowRoot.getElementById("sub-modal-root")) return;
+
+        const subModal = document.createElement("div");
+        subModal.id = "sub-modal-root";
+        subModal.className = "sub-modal-backdrop";
+
+        let tableRows = "";
+        if (fullClasses.length === 0) {
+            tableRows = `<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px;">Không có thông tin lớp hết chỗ</td></tr>`;
+        } else {
+            fullClasses.forEach(item => {
+                tableRows += `
+                    <tr>
+                        <td><b>${item.course_code}</b></td>
+                        <td>${item.course_name}</td>
+                        <td><span class="badge badge-credits" style="background:#f1f5f9;color:#475569;">${item.class_code}</span></td>
+                        <td><span class="badge ${item.type.includes('chính') ? 'badge-type-lt' : 'badge-type-th'}">${item.type}</span></td>
+                        <td style="color:#ef4444;font-weight:600;">${item.reason}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        subModal.innerHTML = `
+            <div class="sub-modal-container">
+                <div class="sub-modal-header">
+                    <h4 class="sub-modal-title">⚠️ Danh sách lớp học đã đầy chỗ</h4>
+                    <button class="sub-modal-close" id="btn-close-sub-modal">&times;</button>
+                </div>
+                <div class="sub-modal-body">
+                    <table class="full-classes-table">
+                        <thead>
+                            <tr>
+                                <th>Mã môn</th>
+                                <th>Tên môn</th>
+                                <th>Mã lớp</th>
+                                <th>Phân loại</th>
+                                <th>Lý do bỏ qua</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        subModal.querySelector("#btn-close-sub-modal").onclick = () => {
+            subModal.remove();
+        };
+
+        subModal.onclick = (e) => {
+            if (e.target === subModal) {
+                subModal.remove();
+            }
+        };
+
+        shadowRoot.querySelector(".modal-container-full").appendChild(subModal);
     }
 }

@@ -101,6 +101,7 @@ async function fetchLopSubGroup(lmid) {
 export async function parsePortalTable(doc = document) {
     const rows = doc.querySelectorAll("tr");
     const rawCoursePromises = [];
+    const fullMainClasses = [];
 
     for (const row of rows) {
         const cols = row.querySelectorAll("td");
@@ -115,7 +116,18 @@ export async function parsePortalTable(doc = document) {
         const max_capacity = parseInt(cols[4].textContent.trim(), 10) || 0;
         const current_enrolled = parseInt(cols[5].textContent.trim(), 10) || 0;
 
-        if (max_capacity > 0 && current_enrolled >= max_capacity) continue;
+        if (max_capacity > 0 && current_enrolled >= max_capacity) {
+            fullMainClasses.push({
+                course_code,
+                course_name,
+                class_code,
+                type: "Lý thuyết chính",
+                max_capacity,
+                current_enrolled,
+                reason: `Đầy chỗ (${current_enrolled}/${max_capacity})`
+            });
+            continue;
+        }
 
         const schedule_raw_lt = cols[7].textContent.trim();
         const lt_schedule = parseScheduleTime(schedule_raw_lt);
@@ -132,53 +144,95 @@ export async function parsePortalTable(doc = document) {
                 subGroups = await fetchLopSubGroup(lmid);
             }
 
+            let fullSubsCount = 0;
+            let fullSubs = [];
+
             // NẾU CÓ NHÓM PHỤ (BT/TH) -> Gom thành danh sách tổ hợp gắn vào Lớp Gốc
             if (subGroups && subGroups.length > 0) {
-                const availableSubGroups = subGroups.filter(sub =>
+                // Đếm lớp thực hành/bài tập đã hết chỗ
+                const fullSubGroups = subGroups.filter(sub =>
+                    sub.max_capacity > 0 && sub.current_enrolled >= sub.max_capacity
+                );
+                fullSubsCount = fullSubGroups.length;
+                fullSubs = fullSubGroups.map(sub => ({
+                    course_code,
+                    course_name,
+                    class_code: `${class_code}_${sub.group_code}`,
+                    type: "Thực hành/Bài tập",
+                    max_capacity: sub.max_capacity,
+                    current_enrolled: sub.current_enrolled,
+                    reason: `Đầy chỗ (${sub.current_enrolled}/${sub.max_capacity})`
+                }));
+
+                const availableSubGroups = subGroups.filter(sub => 
                     sub.max_capacity === 0 || sub.current_enrolled < sub.max_capacity
                 );
 
-                return [{
-                    course_code,
-                    course_name,
-                    class_code, // Giữ nguyên mã lớp gốc: 24_5
-                    credits,
-                    type: "LT+TH/BT",
-                    schedule: lt_schedule,
-                    schedule_raw: schedule_raw_lt,
-                    // Danh sách các lựa chọn nhóm phụ đi kèm để Scheduler tự chọn
-                    sub_groups: availableSubGroups.map(sub => ({
-                        group_code: sub.group_code,
-                        full_class_code: `${class_code}_${sub.group_code}`,
-                        schedules: [lt_schedule, sub.schedule], // Lịch LT + Lịch TH/BT tương ứng
-                        schedule_raw: `LT: ${schedule_raw_lt} | TH/BT: ${sub.schedule_raw}`
-                    }))
-                }];
+                return {
+                    courses: [{
+                        course_code,
+                        course_name,
+                        class_code, // Giữ nguyên mã lớp gốc: 24_5
+                        credits,
+                        type: "LT+TH/BT",
+                        schedule: lt_schedule,
+                        schedule_raw: schedule_raw_lt,
+                        // Danh sách các lựa chọn nhóm phụ đi kèm để Scheduler tự chọn
+                        sub_groups: availableSubGroups.map(sub => ({
+                            group_code: sub.group_code,
+                            full_class_code: `${class_code}_${sub.group_code}`,
+                            schedules: [lt_schedule, sub.schedule], // Lịch LT + Lịch TH/BT tương ứng
+                            schedule_raw: `LT: ${schedule_raw_lt} | TH/BT: ${sub.schedule_raw}`
+                        }))
+                    }],
+                    fullSubsCount,
+                    fullSubs
+                };
             }
 
             // NẾU CHỈ CÓ LÝ THUYẾT THUẦN
-            return [{
-                course_code,
-                course_name,
-                class_code,
-                credits,
-                type: "LT",
-                schedule: lt_schedule,
-                schedules: [lt_schedule],
-                schedule_raw: schedule_raw_lt,
-                sub_groups: []
-            }];
+            return {
+                courses: [{
+                    course_code,
+                    course_name,
+                    class_code,
+                    credits,
+                    type: "LT",
+                    schedule: lt_schedule,
+                    schedules: [lt_schedule],
+                    schedule_raw: schedule_raw_lt,
+                    sub_groups: []
+                }],
+                fullSubsCount: 0,
+                fullSubs: []
+            };
         })());
     }
 
     const results = await Promise.all(rawCoursePromises);
-    const courses = results.flat();
+    const courses = results.flatMap(r => r.courses);
+    let totalFullSubCount = 0;
+    const allFullSubs = [];
+
+    results.forEach(r => {
+        totalFullSubCount += r.fullSubsCount;
+        if (r.fullSubs && r.fullSubs.length > 0) {
+            allFullSubs.push(...r.fullSubs);
+        }
+    });
+
+    // Gán siêu dữ liệu vào mảng
+    courses.fullMainClassesCount = fullMainClasses.length;
+    courses.fullSubClassesCount = totalFullSubCount;
+    courses.fullClasses = [...fullMainClasses, ...allFullSubs];
 
     if (typeof window !== "undefined") {
         window.allCourses = courses;
     }
 
-    console.log("✅ QUÉT GỌN DỮ LIỆU THÀNH CÔNG! Số lớp chính hiển thị UI:", courses.length);
+    console.log("✅ QUÉT GỌN DỮ LIỆU THÀNH CÔNG! Số lớp chính hiển thị UI:", courses.length, 
+                "| Lớp chính hết chỗ:", fullMainClasses.length, 
+                "| Lớp phụ hết chỗ:", totalFullSubCount);
     return courses;
 }
 

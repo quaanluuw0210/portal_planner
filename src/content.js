@@ -84,7 +84,7 @@
                     const allResults = generateFn(groupedArray);
 
                     // 3. Giới hạn tối đa 50 phương án
-                    return { schedules: allResults.slice(0, 50) };
+                    return { schedules: allResults.slice(0, 100) };
                 };
             }
 
