@@ -382,22 +382,202 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
         const currentSched = currentSchedules[activeScheduleIndex];
 
         try {
+            // Tự động kích hoạt tải ảnh thời khóa biểu về máy
+            downloadScheduleImage(currentSched, activeScheduleIndex + 1);
+
             const saved = await storageObj.getSavedSchedules();
             const serializedSched = JSON.stringify(currentSched.map(c => ({ course_code: c.course_code, class_code: c.class_code })));
             const exists = saved.some(s => JSON.stringify(s.map(c => ({ course_code: c.course_code, class_code: c.class_code }))) === serializedSched);
 
             if (exists) {
-                showAlert("Thời khóa biểu này đã được lưu trước đó!", "info");
+                showAlert("Đã tải ảnh TKB! (TKB này đã được lưu vào danh sách từ trước)", "info");
                 return;
             }
             saved.push(currentSched);
             await storageObj.saveSavedSchedules(saved);
-            showAlert(`Lưu thành công Phương án ${activeScheduleIndex + 1}!`, "success");
+            showAlert(`Đã lưu vào danh sách & Tải xuống ảnh Phương án ${activeScheduleIndex + 1}!`, "success");
         } catch (err) {
             console.error(err);
             showAlert("Có lỗi xảy ra khi lưu thời khóa biểu!", "error");
         }
     };
+
+    // Hàm tạo và xuất file ảnh thời khóa biểu (PNG) sử dụng HTML5 Canvas
+    function downloadScheduleImage(sched, planNumber) {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1200;
+        canvas.height = 850;
+        const ctx = canvas.getContext("2d");
+
+        // 1. Tạo hình nền trắng sạch
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Vẽ viền trang trí cho ảnh xuất ra
+        ctx.strokeStyle = "#cbd5e1";
+        ctx.lineWidth = 4;
+        ctx.strokeRect(8, 8, canvas.width - 16, canvas.height - 16);
+
+        // 2. Vẽ Tiêu đề TKB
+        ctx.fillStyle = "#0f172a";
+        ctx.font = "bold 24px system-ui, -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillText(`THỜI KHÓA BIỂU ĐÃ XẾP - PHƯƠNG ÁN ${planNumber}`, canvas.width / 2, 30);
+
+        ctx.font = "italic 13px system-ui, -apple-system, sans-serif";
+        ctx.fillStyle = "#64748b";
+        ctx.fillText("Tạo tự động bởi HCMUS Schedule Auto Planner Extension", canvas.width / 2, 60);
+
+        // Cấu hình vị trí và kích thước lưới
+        const startX = 85;
+        const startY = 100;
+        const gridWidth = canvas.width - startX - 45;
+        const gridHeight = canvas.height - startY - 45;
+        const colWidth = gridWidth / 6; // 6 cột đại diện từ Thứ 2 -> Thứ 7
+        const rowHeight = gridHeight / 12; // 12 tiết học cơ bản
+
+        // Vẽ Tên Thứ (Cột)
+        const weekdays = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+        ctx.font = "bold 14px system-ui, -apple-system, sans-serif";
+        ctx.fillStyle = "#1e293b";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        weekdays.forEach((day, index) => {
+            const x = startX + index * colWidth + colWidth / 2;
+            const y = startY - 20;
+            ctx.fillText(day, x, y);
+        });
+
+        // Vẽ Lưới tọa độ
+        ctx.strokeStyle = "#e2e8f0";
+        ctx.lineWidth = 1;
+
+        // Vẽ các cột dọc
+        for (let i = 0; i <= 6; i++) {
+            const x = startX + i * colWidth;
+            ctx.beginPath();
+            ctx.moveTo(x, startY);
+            ctx.lineTo(x, startY + gridHeight);
+            ctx.stroke();
+        }
+
+        // Vẽ các dòng ngang & Nhãn Tiết học bên trái
+        ctx.font = "600 12px system-ui, -apple-system, sans-serif";
+        ctx.fillStyle = "#475569";
+        ctx.textAlign = "right";
+
+        for (let i = 0; i <= 12; i++) {
+            const y = startY + i * rowHeight;
+            ctx.beginPath();
+            ctx.moveTo(startX, y);
+            ctx.lineTo(startX + gridWidth, y);
+            ctx.stroke();
+
+            if (i < 12) {
+                ctx.fillText(`Tiết ${i + 1}`, startX - 12, y + rowHeight / 2);
+            }
+        }
+
+        // 3. Phân bổ màu sắc ngẫu nhiên solid đẹp mắt cho các môn
+        const uniqueCourseCodes = [...new Set(sched.map(c => c.course_code))];
+        const colorMap = {};
+        const canvasColors = ['#4f46e5', '#059669', '#d97706', '#9333ea', '#e11d48', '#0891b2', '#ea580c', '#0d9488'];
+        uniqueCourseCodes.forEach((code, idx) => {
+            colorMap[code] = canvasColors[idx % canvasColors.length];
+        });
+
+        // Helper: Tự động xuống dòng cho tên môn học dài
+        function drawWrappedText(context, text, x, y, maxWidth, lineHeight) {
+            const words = text.split(" ");
+            let line = "";
+            const lines = [];
+
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + " ";
+                let metrics = context.measureText(testLine);
+                let testWidth = metrics.width;
+                if (testWidth > maxWidth && n > 0) {
+                    lines.push(line);
+                    line = words[n] + " ";
+                } else {
+                    line = testLine;
+                }
+            }
+            lines.push(line);
+
+            // Bắt đầu vẽ từ tâm theo chiều dọc
+            const totalHeight = lines.length * lineHeight;
+            let currentY = y - totalHeight / 2 + lineHeight / 2;
+
+            lines.forEach(l => {
+                context.fillText(l.trim(), x, currentY);
+                currentY += lineHeight;
+            });
+        }
+
+        // 4. Vẽ các lớp học (LT + TH) lên lưới lịch học
+        sched.forEach(course => {
+            const sessionList = (course.schedules && course.schedules.length > 0)
+                ? course.schedules
+                : (course.schedule ? [course.schedule] : []);
+
+            const color = colorMap[course.course_code];
+
+            sessionList.forEach((sch, sIdx) => {
+                if (!sch || !sch.day || sch.day < 2 || sch.day > 7) return;
+
+                const colIndex = sch.day - 2; // Ngày 2 -> Cột 0
+                const startRow = sch.start_slot - 1; // Tiết 1 -> Dòng 0
+                const duration = sch.end_slot - sch.start_slot + 1; // Số tiết chiếm dụng
+
+                // Tính toán vị trí hình chữ nhật đại diện lớp học
+                const x = startX + colIndex * colWidth + 3;
+                const y = startY + startRow * rowHeight + 3;
+                const w = colWidth - 6;
+                const h = duration * rowHeight - 6;
+
+                // Vẽ box lớp học bo tròn các góc
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(x, y, w, h, 6);
+                } else {
+                    ctx.rect(x, y, w, h);
+                }
+                ctx.fill();
+
+                // Viết chữ mô tả môn học
+                ctx.fillStyle = "#ffffff";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+
+                const tag = sessionList.length > 1 ? (sIdx === 0 ? " [LT]" : " [TH]") : "";
+                const displayTitle = `${course.course_name}${tag}`;
+
+                // Tên môn học (Bo font chữ to/đậm)
+                ctx.font = "bold 11px system-ui, -apple-system, sans-serif";
+                drawWrappedText(ctx, displayTitle, x + w / 2, y + h / 2 - 12, w - 8, 13);
+
+                // Mã lớp học + Phòng học (Font nhỏ hơn nằm bên dưới)
+                ctx.font = "500 10px system-ui, -apple-system, sans-serif";
+                ctx.fillText(`Lớp: ${course.class_code}`, x + w / 2, y + h - 23);
+                ctx.fillText(`Phòng: ${sch.room || "Thông báo sau"}`, x + w / 2, y + h - 11);
+            });
+        });
+
+        // 5. Kết xuất ảnh ra DataURL và tự động download về thiết bị
+        try {
+            const dataUrl = canvas.toDataURL("image/png");
+            const link = document.createElement("a");
+            link.download = `TKB_HCMUS_PhuongAn_${planNumber}.png`;
+            link.href = dataUrl;
+            link.click();
+        } catch (e) {
+            console.error("Lỗi khi tạo ảnh TKB:", e);
+        }
+    }
 
     // Renderers
     function renderCourseList(uniqueCodes) {
