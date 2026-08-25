@@ -33,66 +33,93 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
         { bg: 'linear-gradient(135deg, #14b8a6, #0d9488)' }
     ];
 
-    // Template 1 Cột Full Màn Hình
+    // Template 2-cột Full Màn Hình (Cột trái: chọn môn | Cột phải: tiêu chí)
     shadowRoot.innerHTML = `
         <link rel="stylesheet" href="${cssUrl}">
         <div class="backdrop">
             <div class="modal-container-full">
                 <!-- Header Cố Định -->
                 <div class="modal-header-full">
-                    <h3 class="brand-title">📅 HCMUS Auto Planner</h3>
+                    <div style="display:flex; align-items:center; gap:14px;">
+                        <h3 class="brand-title">📅 HCMUS Auto Planner</h3>
+                        <span id="selected-count-badge" style="display:none; background:#4f46e5; color:#fff;
+                            font-size:0.8rem; font-weight:700; padding:3px 10px; border-radius:20px;">
+                            0 môn đã chọn
+                        </span>
+                    </div>
                     <button class="modal-close-btn" id="btn-close">&times;</button>
                 </div>
-                
-                <div id="alert-container" style="display: none; padding: 10px 24px 0 24px;"></div>
 
-                <!-- SCREEN 1: BƯỚC CẤU HÌNH & CHỌN MÔN (Phủ rộng 100%) -->
-                <div id="screen-setup" class="screen-view">
-                    <div class="setup-wrapper">
-                        <!-- Bước 1: Quét và chọn môn -->
-                        <div class="widget-section">
-                            <h4 class="section-title">Bước 1: Quét & Chọn môn học</h4>
-                            <button class="btn btn-primary" id="btn-scan" style="width: auto; padding: 10px 24px;">🔍 Quét dữ liệu trang này</button>
-                            
-                            <div id="course-selection-wrapper" style="display: none; margin-top: 16px; flex-direction: column; gap: 12px;">
-                                <input type="text" id="course-search" class="constraint-select" placeholder="🔍 Tìm kiếm tên môn hoặc mã môn học..." style="max-width: 400px;">
-                                <div class="course-checkbox-grid" id="course-list"></div>
+                <div id="alert-container" style="display:none; padding:8px 24px 0;"></div>
+
+                <!-- SCREEN 1: Layout 2 cột -->
+                <div id="screen-setup" class="screen-view screen-setup-2col">
+
+                    <!-- CỘT TRÁI: Chọn môn -->
+                    <div class="setup-left">
+                        <!-- Scan + Search row -->
+                        <div class="scan-row">
+                            <button class="btn btn-scan" id="btn-scan">
+                                🔍 Quét dữ liệu Portal
+                            </button>
+                            <div class="search-wrapper" id="search-wrapper" style="display:none;">
+                                <span class="search-icon">⌕</span>
+                                <input type="text" id="course-search" class="search-input"
+                                       placeholder="Tìm môn theo tên hoặc mã môn...">
                             </div>
                         </div>
 
-                        <!-- Bước 2: Tiêu chí lọc & Ghim lớp -->
-                        <div class="widget-section" id="section-constraints" style="display: none; margin-top: 20px;">
-                            <h4 class="section-title">Bước 2: Tiêu chí lọc & Ghim lớp</h4>
-                            
-                            <div class="constraints-row">
-                                <label class="constraint-checkbox-label">
-                                    <span class="checkbox-container">
-                                        <input type="checkbox" id="chk-avoid-slot1">
-                                        <span class="checkmark"></span>
-                                    </span>
-                                    Bỏ tiết 1 (7h30)
-                                </label>
+                        <!-- Thanh chip Môn đã chọn (hiện khi có môn được tick) -->
+                        <div id="selected-bar" class="selected-bar" style="display:none;">
+                            <span class="selected-bar-label">Đã chọn:</span>
+                            <div class="selected-chips" id="selected-chips"></div>
+                        </div>
+                        <!-- Placeholder trước khi quét -->
+                        <div id="course-placeholder" class="course-placeholder">
+                            <div class="placeholder-icon">🎓</div>
+                            <div class="placeholder-text">Nhấn <b>Quét dữ liệu Portal</b> để tải danh sách môn học từ trang đăng ký</div>
+                        </div>
 
-                                <label class="constraint-checkbox-label">
-                                    <span class="checkbox-container">
-                                        <input type="checkbox" id="chk-avoid-evening">
-                                        <span class="checkmark"></span>
-                                    </span>
-                                    Bỏ tiết tối
-                                </label>
+                        <!-- Course card grid (hiển thị sau khi quét) -->
+                        <div id="course-selection-wrapper" style="display:none; flex-direction:column; gap:0; flex:1; min-height:0;">
+                            <div class="course-list-header" id="course-list-header">
+                                <span id="course-total-label">0 môn học</span>
+                            </div>
+                            <div class="course-card-grid" id="course-list"></div>
+                        </div>
+                    </div>
 
-                                <div style="display: flex; align-items: center; gap: 8px;">
-                                    <label class="section-title" style="margin: 0; font-size: 0.85rem;">Ca học ưu tiên:</label>
-                                    <select id="select-session" class="constraint-select" style="width: auto;">
-                                        <option value="none">Không ưu tiên</option>
-                                        <option value="morning">Ca sáng (kết thúc <= tiết 5)</option>
-                                        <option value="afternoon">Ca chiều (bắt đầu >= tiết 6)</option>
-                                    </select>
-                                </div>
+                    <!-- CỘT PHẢI: Tiêu chí + Ghim + CTA -->
+                    <div class="setup-right" id="section-constraints" style="display:none;">
+
+                        <!-- Tiêu chí lọc -->
+                        <div class="right-section">
+                            <h4 class="right-section-title">⚙️ Tiêu chí lọc</h4>
+
+                            <div class="filter-check-group">
+                                <label class="filter-check-item">
+                                    <input type="checkbox" id="chk-avoid-slot1" class="native-chk">
+                                    <span class="chk-box"></span>
+                                    <span class="chk-label">Bỏ tiết 1 <small>(7:30)</small></span>
+                                </label>
+                                <label class="filter-check-item">
+                                    <input type="checkbox" id="chk-avoid-evening" class="native-chk">
+                                    <span class="chk-box"></span>
+                                    <span class="chk-label">Bỏ tiết tối <small>(≥ tiết 11)</small></span>
+                                </label>
                             </div>
 
-                            <div style="margin-top: 16px;">
-                                <label class="section-title" style="font-size: 0.85rem; margin-bottom: 8px; display: block;">Tránh thứ trong tuần:</label>
+                            <div class="filter-field">
+                                <label class="filter-label">Ca học ưu tiên</label>
+                                <select id="select-session" class="filter-select">
+                                    <option value="none">Không ưu tiên</option>
+                                    <option value="morning">☀️ Ca sáng (kết thúc ≤ tiết 5)</option>
+                                    <option value="afternoon">🌤️ Ca chiều (bắt đầu ≥ tiết 6)</option>
+                                </select>
+                            </div>
+
+                            <div class="filter-field">
+                                <label class="filter-label">Tránh thứ trong tuần</label>
                                 <div class="weekday-selector" id="weekday-picker">
                                     <button class="weekday-btn" data-day="2">T2</button>
                                     <button class="weekday-btn" data-day="3">T3</button>
@@ -102,45 +129,60 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
                                     <button class="weekday-btn" data-day="7">T7</button>
                                 </div>
                             </div>
+                        </div>
 
-                            <div style="margin-top: 16px;">
-                                <label class="section-title" style="font-size: 0.85rem; margin-bottom: 8px; display: block;">Ghim mã lớp cố định:</label>
-                                <div id="pin-classes-container" class="pin-grid">
-                                    <span style="color: #64748b; font-size: 0.85rem; font-style: italic;">Chọn môn học ở Bước 1 để ghim mã lớp</span>
-                                </div>
+                        <!-- Ghim mã lớp -->
+                        <div class="right-section">
+                            <h4 class="right-section-title">📌 Ghim mã lớp cố định</h4>
+                            <div id="pin-classes-container" class="pin-grid">
+                                <span class="pin-empty-msg">Tích chọn môn học ở bên trái để ghim mã lớp</span>
                             </div>
                         </div>
 
-                        <!-- Action Button -->
-                        <div class="widget-section" id="section-solve-action" style="display: none; margin-top: 24px;">
-                            <button class="btn btn-primary btn-large" id="btn-solve">📅 Bắt đầu xếp thời khóa biểu</button>
+                        <!-- CTA Solve -->
+                        <div id="section-solve-action" style="display:none; margin-top:auto; padding-top:12px;">
+                            <button class="btn btn-solve" id="btn-solve">
+                                ⚡ Xếp lịch ngay
+                            </button>
                         </div>
-                    </div>
-                </div>
 
-                <!-- SCREEN 2: BẢNG LỊCH HỌC FULL MÀN HÌNH (Ẩn mặc định) -->
-                <div id="screen-results" class="screen-view" style="display: none;">
+                    </div>
+
+                </div><!-- /screen-setup -->
+
+                <!-- SCREEN 2: 2-cột: Lịch (trái) + Chi tiết (phải) -->
+                <div id="screen-results" class="screen-view screen-results-2col" style="display: none;">
+
+                    <!-- Toolbar -->
                     <div class="results-toolbar">
-                        <button class="btn btn-outline" id="btn-back-setup">↺ Bỏ chọn / Chọn lại môn học</button>
+                        <button class="btn btn-outline" id="btn-back-setup">↺ Chọn lại môn & tiêu chí</button>
                         <div class="options-nav" id="options-nav-pills"></div>
-                        <button class="btn btn-primary" id="btn-save-current" style="background: linear-gradient(135deg, #4f46e5, #6366f1); padding: 8px 16px;">💾 Lưu TKB này</button>
+                        <button class="btn btn-primary" id="btn-save-current"
+                                style="background:linear-gradient(135deg,#4f46e5,#6366f1);padding:8px 16px;">💾 Lưu TKB này</button>
                     </div>
 
-                    <div class="calendar-wrapper-full">
-                        <div class="calendar-grid" id="calendar-grid">
-                            <div class="grid-header" style="grid-column: 1; grid-row: 1;">Tiết</div>
-                            <div class="grid-header" style="grid-column: 2; grid-row: 1;">Thứ 2</div>
-                            <div class="grid-header" style="grid-column: 3; grid-row: 1;">Thứ 3</div>
-                            <div class="grid-header" style="grid-column: 4; grid-row: 1;">Thứ 4</div>
-                            <div class="grid-header" style="grid-column: 5; grid-row: 1;">Thứ 5</div>
-                            <div class="grid-header" style="grid-column: 6; grid-row: 1;">Thứ 6</div>
-                            <div class="grid-header" style="grid-column: 7; grid-row: 1;">Thứ 7</div>
+                    <!-- Body: Calendar + Sidebar -->
+                    <div class="results-body">
+
+                        <!-- LỊCH HỌC: chiếm toàn bộ chiều cao, không scroll dọc -->
+                        <div class="calendar-wrapper-full">
+                            <div class="calendar-grid" id="calendar-grid">
+                                <div class="grid-header" style="grid-column:1;grid-row:1;">Tiết</div>
+                                <div class="grid-header" style="grid-column:2;grid-row:1;">Thứ 2</div>
+                                <div class="grid-header" style="grid-column:3;grid-row:1;">Thứ 3</div>
+                                <div class="grid-header" style="grid-column:4;grid-row:1;">Thứ 4</div>
+                                <div class="grid-header" style="grid-column:5;grid-row:1;">Thứ 5</div>
+                                <div class="grid-header" style="grid-column:6;grid-row:1;">Thứ 6</div>
+                                <div class="grid-header" style="grid-column:7;grid-row:1;">Thứ 7</div>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="option-details-panel">
-                        <h5 style="margin: 0 0 10px 0; color: #1e293b; font-size: 0.9rem; font-weight: 700;">Chi tiết lớp học của phương án đang chọn</h5>
-                        <div id="details-list" class="details-grid-container"></div>
+                        <!-- CHI TIẾT SIDEBAR bên phải -->
+                        <div class="results-sidebar">
+                            <h5 class="sidebar-title">📋 Chi tiết phương án</h5>
+                            <div id="details-list" class="details-list-vert"></div>
+                        </div>
+
                     </div>
                 </div>
             </div>
@@ -221,17 +263,13 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
     };
 
     // BUG FIX: Dùng parseFn (dependency được inject vào) thay vì gọi parsePortalTable trực tiếp
-    // (parsePortalTable không tồn tại trong scope này - nó là async export từ parser.js)
     shadowRoot.getElementById("btn-scan").onclick = async () => {
         try {
             showAlert("Đang quét dữ liệu Portal, vui lòng chờ...", "info");
 
-            // BUG FIX: Gọi parseFn (đã được inject qua tham số hàm), không phải parsePortalTable
             allCourses = await parseFn(document);
 
-            // Gán ra window toàn cục để debug qua Console
             if (typeof window !== "undefined") window.allCourses = allCourses;
-
             console.log("HCMUS Planner - Dữ liệu đã nạp:", allCourses);
 
             if (!allCourses || allCourses.length === 0) {
@@ -239,17 +277,21 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
                 return;
             }
 
-            // BUG FIX: renderCourseList nhận mảng unique course_code (string[]), không phải allCourses (object[])
             const uniqueCodes = [...new Set(allCourses.map(c => c.course_code))];
 
-            // Hiển thị các section còn ẩn
+            // Ẩn placeholder, hiện search + danh sách môn
+            shadowRoot.getElementById("course-placeholder").style.display = "none";
+            shadowRoot.getElementById("search-wrapper").style.display = "flex";
+            shadowRoot.getElementById("course-total-label").textContent = `${uniqueCodes.length} môn học (${allCourses.length} lớp)`;
             shadowRoot.getElementById("course-selection-wrapper").style.display = "flex";
-            shadowRoot.getElementById("section-constraints").style.display = "block";
+
+            // Hiện cột phải (tiêu chí + ghim)
+            shadowRoot.getElementById("section-constraints").style.display = "flex";
             shadowRoot.getElementById("section-solve-action").style.display = "block";
 
             renderCourseList(uniqueCodes);
             renderPinClasses();
-            showAlert(`Quét thành công ${allCourses.length} tổ hợp lớp (${uniqueCodes.length} môn)!`, "success");
+            showAlert(`Quét thành công ${allCourses.length} lớp (${uniqueCodes.length} môn)!`, "success");
 
         } catch (e) {
             console.error("Lỗi khi quét dữ liệu:", e);
@@ -259,7 +301,7 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
 
     shadowRoot.getElementById("course-search").oninput = (e) => {
         const query = e.target.value.toLowerCase().trim();
-        const items = shadowRoot.querySelectorAll("#course-list .course-item");
+        const items = shadowRoot.querySelectorAll("#course-list .course-card");
         items.forEach(item => {
             const text = item.textContent.toLowerCase();
             item.style.display = text.includes(query) ? "flex" : "none";
@@ -336,34 +378,92 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
         const container = shadowRoot.getElementById("course-list");
         container.innerHTML = "";
 
+        function renderSelectedChips() {
+            const bar = shadowRoot.getElementById("selected-bar");
+            const chipsContainer = shadowRoot.getElementById("selected-chips");
+            const badge = shadowRoot.getElementById("selected-count-badge");
+
+            if (selectedCodes.length === 0) {
+                if (bar) bar.style.display = "none";
+                if (badge) badge.style.display = "none";
+                return;
+            }
+
+            // Hiện bar + badge
+            if (bar) bar.style.display = "flex";
+            if (badge) {
+                badge.style.display = "inline-block";
+                badge.textContent = `${selectedCodes.length} môn đã chọn`;
+            }
+
+            // Render chip cho từng môn đã chọn
+            if (!chipsContainer) return;
+            chipsContainer.innerHTML = "";
+            selectedCodes.forEach(code => {
+                const sample = allCourses.find(c => c.course_code === code);
+                const chip = document.createElement("div");
+                chip.className = "selected-chip";
+                chip.innerHTML = `
+                    <span class="chip-code">${code}</span>
+                    <span class="chip-name">${sample ? sample.course_name : ''}</span>
+                    <button class="chip-remove" data-code="${code}" title="Bỏ chọn">×</button>
+                `;
+                chip.querySelector(".chip-remove").onclick = (e) => {
+                    e.stopPropagation();
+                    const c = e.currentTarget.dataset.code;
+                    selectedCodes = selectedCodes.filter(x => x !== c);
+                    delete forcedClasses[c];
+                    // Uncheck card tương ứng
+                    const chkEl = shadowRoot.querySelector(`#course-list .chk-course[value="${c}"]`);
+                    if (chkEl) {
+                        chkEl.checked = false;
+                        chkEl.closest(".course-card")?.classList.remove("selected");
+                    }
+                    renderSelectedChips();
+                    renderPinClasses();
+                    savePreferences();
+                };
+                chipsContainer.appendChild(chip);
+            });
+        }
+
+        // Alias cho các chỗ gọi updateSelectedBadge cũ
+        function updateSelectedBadge() { renderSelectedChips(); }
+
         uniqueCodes.forEach(code => {
             const matches = allCourses.filter(c => c.course_code === code);
             const sample = matches[0];
 
-            const item = document.createElement("div");
-            item.className = "course-item";
-            if (selectedCodes.includes(code)) item.classList.add("selected");
-
-            // BUG FIX: type có thể là 'LT', 'LT+BT' — dùng .includes() để phù hợp mọi biến thể
             const hasLT = matches.some(m => m.type && m.type.includes('LT'));
             const hasTH = matches.some(m => m.type && (m.type.includes('TH') || m.type.includes('BT')));
 
+            const item = document.createElement("div");
+            item.className = "course-card" + (selectedCodes.includes(code) ? " selected" : "");
+
             item.innerHTML = `
-                <label class="checkbox-container">
+                <div class="course-card-check">
                     <input type="checkbox" class="chk-course" value="${code}" ${selectedCodes.includes(code) ? "checked" : ""}>
-                    <span class="checkmark"></span>
-                </label>
-                <div class="course-label">
-                    <div><b>${code}</b> - ${sample.course_name}</div>
-                    <div class="badge-group">
+                </div>
+                <div class="course-card-body">
+                    <div class="course-card-name">
+                        <span class="course-code">${code}</span>
+                        <span class="course-name-text">${sample.course_name}</span>
+                    </div>
+                    <div class="course-card-meta">
                         <span class="badge badge-credits">${sample.credits} TC</span>
                         ${hasLT ? '<span class="badge badge-type-lt">LT</span>' : ''}
                         ${hasTH ? '<span class="badge badge-type-th">TH/BT</span>' : ''}
+                        <span class="course-class-count">${matches.length} lớp</span>
                     </div>
                 </div>
             `;
 
             const chk = item.querySelector(".chk-course");
+            // Bấm cả thẻ card cũng toggle checkbox
+            item.onclick = (e) => {
+                if (e.target !== chk) chk.click();
+            };
+            chk.onclick = (e) => e.stopPropagation();
             chk.onchange = () => {
                 if (chk.checked) {
                     if (!selectedCodes.includes(code)) selectedCodes.push(code);
@@ -373,12 +473,15 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
                     item.classList.remove("selected");
                     delete forcedClasses[code];
                 }
+                updateSelectedBadge();
                 renderPinClasses();
                 savePreferences();
             };
 
             container.appendChild(item);
         });
+
+        updateSelectedBadge();
     }
 
     function renderPinClasses() {
@@ -386,7 +489,7 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
         container.innerHTML = "";
 
         if (selectedCodes.length === 0) {
-            container.innerHTML = `<span style="color: #64748b; font-size: 0.85rem; font-style: italic;">Chọn môn học ở Bước 1 để ghim mã lớp</span>`;
+            container.innerHTML = `<span class="pin-empty-msg">Tích chọn môn học ở bên trái để ghim mã lớp</span>`;
             return;
         }
 
@@ -508,34 +611,34 @@ export async function initShadowOverlay(host, parseFn, solveFn, storageObj) {
             });
         });
 
-        // 2. Populate bottom details list
+        // 2. Populate sidebar details (vertical compact cards)
         const detailsList = shadowRoot.getElementById("details-list");
         detailsList.innerHTML = "";
 
         sched.forEach(course => {
             const detailCard = document.createElement("div");
-            detailCard.className = "detail-card";
+            detailCard.className = "detail-card-vert";
 
-            // BUG FIX: Lấy thông tin phòng học và thời gian từ schedule (có thể null)
             const mainSch = course.schedule;
             const timeStr = mainSch
-                ? `Thứ ${mainSch.day === 8 ? 'CN' : mainSch.day} (Tiết ${mainSch.start_slot}–${mainSch.end_slot})`
-                : "Thông báo sau";
-            const roomStr = mainSch ? (mainSch.room || "Thông báo sau") : "Thông báo sau";
+                ? `Thu ${mainSch.day === 8 ? 'CN' : mainSch.day} - Tiet ${mainSch.start_slot}–${mainSch.end_slot}`
+                : "Thong bao sau";
+            const roomStr = mainSch ? (mainSch.room || "Thong bao sau") : "Thong bao sau";
+            const isLTBT = course.type && (course.type.includes('TH') || course.type.includes('BT'));
+            detailCard.style.borderLeftColor = isLTBT ? '#f59e0b' : '#6366f1';
 
-            detailCard.innerHTML = `
-                <div class="detail-card-header">
-                    <span style="font-weight: 700;">${course.course_code} - ${course.course_name}</span>
-                    <span class="badge ${course.type && (course.type.includes('TH') || course.type.includes('BT')) ? 'badge-type-th' : 'badge-type-lt'}">${course.type}</span>
-                </div>
-                <div class="detail-card-body">
-                    <div>Mã lớp: <b>${course.class_code}</b></div>
-                    <div>Lịch học: <b>${timeStr}</b></div>
-                    <div>Phòng học: <b>${roomStr}</b></div>
-                    <div>Tín chỉ: <b>${course.credits} TC</b></div>
-                    <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">Chi tiết: ${course.schedule_raw || ''}</div>
-                </div>
-            `;
+            detailCard.innerHTML =
+                '<div class="dv-header">' +
+                    '<span class="dv-code">' + course.course_code + '</span>' +
+                    '<span class="badge ' + (isLTBT ? 'badge-type-th' : 'badge-type-lt') + '">' + course.type + '</span>' +
+                '</div>' +
+                '<div class="dv-name">' + course.course_name + '</div>' +
+                '<div class="dv-rows">' +
+                    '<div class="dv-row"><span class="dv-icon">&#127991;</span>' + course.class_code + '</div>' +
+                    '<div class="dv-row"><span class="dv-icon">&#128197;</span>' + timeStr + '</div>' +
+                    '<div class="dv-row"><span class="dv-icon">&#128205;</span>' + roomStr + '</div>' +
+                    '<div class="dv-row"><span class="dv-icon">&#11088;</span>' + course.credits + ' tin chi</div>' +
+                '</div>';
 
             detailsList.appendChild(detailCard);
         });
