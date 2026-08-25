@@ -42,6 +42,20 @@
             // → API mới của generateSchedules(selectedCoursesGrouped)
             function makeSolveFn(generateFn) {
                 return function solveFn(allCourses, selectedCodes, constraints = {}, forcedClasses = {}) {
+                    // Helper kiểm tra xem danh sách lịch học có vi phạm ràng buộc không
+                    function isViolated(sessions) {
+                        if (!sessions || sessions.length === 0) return false;
+                        for (const s of sessions) {
+                            if (!s) continue;
+                            if (constraints.avoidDays && constraints.avoidDays.includes(s.day)) return true;
+                            if (constraints.preferSession === 'morning' && s.end_slot > 5) return true;
+                            if (constraints.preferSession === 'afternoon' && s.start_slot < 6) return true;
+                            if (constraints.avoidSlot1 && s.half_slots && s.half_slots.includes(1)) return true;
+                            if (constraints.avoidEvening && s.half_slots && s.half_slots.some(sl => sl >= 11)) return true;
+                        }
+                        return false;
+                    }
+
                     // 1. Nhóm các lớp theo course_code
                     const grouped = {};
                     selectedCodes.forEach(code => { grouped[code] = []; });
@@ -55,20 +69,22 @@
                             if (!forcedClasses[code].includes(course.class_code)) return;
                         }
 
-                        // Áp dụng constraint trên tất cả các buổi học
-                        const sessions = (course.schedules && course.schedules.length > 0)
-                            ? course.schedules : (course.schedule ? [course.schedule] : []);
+                        // A. Kiểm tra lớp lý thuyết chính
+                        const mainSessions = course.schedule ? [course.schedule] : [];
+                        if (isViolated(mainSessions)) return;
 
-                        let violated = false;
-                        for (const s of sessions) {
-                            if (!s) continue;
-                            if (constraints.avoidDays && constraints.avoidDays.includes(s.day)) { violated = true; break; }
-                            if (constraints.preferSession === 'morning' && s.end_slot > 5) { violated = true; break; }
-                            if (constraints.preferSession === 'afternoon' && s.start_slot < 6) { violated = true; break; }
-                            if (constraints.avoidSlot1 && s.half_slots && s.half_slots.includes(1)) { violated = true; break; }
-                            if (constraints.avoidEvening && s.half_slots && s.half_slots.some(sl => sl >= 11)) { violated = true; break; }
+                        // B. Kiểm tra và lọc nhóm phụ (nếu có thực hành/bài tập đi kèm)
+                        if (Array.isArray(course.sub_groups) && course.sub_groups.length > 0) {
+                            const validSubs = course.sub_groups.filter(sub => {
+                                return !isViolated(sub.schedules);
+                            });
+
+                            // Nếu không còn bất kỳ nhóm thực hành phụ nào thỏa mãn, loại bỏ luôn lớp chính này
+                            if (validSubs.length === 0) return;
+
+                            // Cập nhật lại danh sách nhóm phụ hợp lệ cho lớp chính
+                            course.sub_groups = validSubs;
                         }
-                        if (violated) return;
 
                         grouped[code].push(course);
                     });
